@@ -1,6 +1,6 @@
 # 创造模式增强 · Creator Mode Plus
 
-**v0.1.0** · DSH Host 插件 · 包名 `@dsh-external/dsh-creator-plus`
+**v0.1.1** · DSH Host 插件 · 包名 `@dsh-external/dsh-creator-plus`
 
 创造模式经常安装、修改、调试插件，一不小心就把本体客户端弄崩。本插件给创造模式加一个「分身」：
 在临时的纯净 `DSH_HOME` 里启动一个 DSH，把待测插件装进去，用无头浏览器打开它的前端，确认能正常启动，**再**装进本体。
