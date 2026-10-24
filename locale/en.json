@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Creator Mode Plus",
+    "description": "Adds a one-click clone check to Creator mode: boots a disposable clean profile, installs the plugin under test, and opens the Web UI in a headless browser to confirm it still starts."
+  }
+}

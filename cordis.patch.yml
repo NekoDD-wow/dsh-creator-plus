@@ -1,0 +1,10 @@
+# 创造模式增强（dsh-creator-plus）bundle 层。
+# 这是一条 Host 级插件行：它在 Host 上监听 agent 创建，只给使用指定预设（默认 cordis，即创造模式）
+# 的 agent 注册 clone_check / clone_close 两个工具和一段简短提醒。其他预设完全看不到它，不占提示词。
+# ⚠ 只用一种接入方式：包名列进 profile 的 bundles（本文件生效），或手写 insert，二者都做会 duplicate loader entry id。
+- insert:
+    - id: dsh-creator-plus
+      name: '@dsh-external/dsh-creator-plus'
+      config:
+        presets:
+          - cordis

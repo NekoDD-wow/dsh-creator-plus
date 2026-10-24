@@ -1,0 +1,22 @@
+{
+  "name": "@dsh-external/dsh-creator-plus",
+  "version": "0.1.1",
+  "private": true,
+  "description": "创造模式增强：一键在临时纯净 profile 中启动 DSH 分身，用无头浏览器检查前端能否正常启动，避免改坏本体客户端。",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": ["index.js", "lib", "cordis.patch.yml", "locale/*.json", "icon.svg", "README.md"],
+  "license": "BSD-3-Clause",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" }
+  }
+}
