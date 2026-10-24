@@ -12,7 +12,9 @@ import { findBrowser } from '../lib/locate.js'
 const here = dirname(fileURLToPath(import.meta.url))
 const dsh = { command: process.execPath, args: [join(here, 'fixtures', 'fake-dsh.mjs')], env: {}, shell: false, source: 'test' }
 const browser = findBrowser()
-const browserArgs = process.platform === 'linux' ? ['--no-sandbox'] : []
+// CI 的无头 Chromium 冷启动更慢，且 /dev/shm 偏小；放宽就绪上限并禁用 dev-shm。
+const browserArgs = process.platform === 'linux' ? ['--no-sandbox', '--disable-dev-shm-usage'] : []
+const browserTimeoutMs = 60000
 
 async function bundle(behavior) {
   const dir = await mkdtemp(join(tmpdir(), 'bundle-'))
@@ -23,7 +25,7 @@ async function bundle(behavior) {
 async function run(behavior, extra = {}) {
   const tmpRoot = await mkdtemp(join(tmpdir(), 'e2e-'))
   const artifactsDir = join(tmpRoot, 'shots')
-  const r = await runClone({ dsh, browser, browserArgs, packageDir: behavior && await bundle(behavior), tmpRoot, artifactsDir, settleMs: 800, startTimeoutMs: 20000, ...extra })
+  const r = await runClone({ dsh, browser, browserArgs, browserTimeoutMs, packageDir: behavior && await bundle(behavior), tmpRoot, artifactsDir, settleMs: 800, startTimeoutMs: 20000, ...extra })
   const left = (await readdir(tmpRoot)).filter(n => n.startsWith('dsh-clone-'))
   return { r, left }
 }
