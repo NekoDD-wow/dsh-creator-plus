@@ -1,5 +1,8 @@
 # 创造模式增强 · Creator Mode Plus
 
+[![CI](https://github.com/NekoDD-wow/dsh-creator-plus/actions/workflows/ci.yml/badge.svg)](https://github.com/NekoDD-wow/dsh-creator-plus/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/NekoDD-wow/dsh-creator-plus?label=release)](https://github.com/NekoDD-wow/dsh-creator-plus/releases)
+
 **v0.1.6** · DSH Host 插件 · 包名 `@dsh-external/dsh-creator-plus`
 
 创造模式经常安装、修改、调试插件，一不小心就把本体客户端弄崩。本插件给创造模式加一个「分身」：
@@ -11,7 +14,7 @@
 - **`clone_close` 工具**：关掉 `keepAlive` 保留的分身。
 - **自动点掉首启弹窗**：clone 首次打开时的「预览版说明」和未登录的「开始使用」引导会被自动关闭，截图/检查结果更干净（命中记录写进 `page.dismissed`）。
 - **创造模式提醒**：只给 `cordis`（创造模式）预设的会话注入一段短提醒：装进本体前先跑 `clone_check`，并显式说明这是官方 verification 指引中「不要另起浏览器 / 改 HOME」的唯一例外。其他预设看不到工具也不付提示词成本。
-- **斜杠指令**：`/clone-check <dir> [clean|copy] [keep]` 与 `/clone-close`，在输入框直接执行，不产生模型消息、不进上下文（token 0）；同样只给目标预设的会话。
+- **斜杠指令**（不进模型上下文、不烧 token）：`/clone-check`、`/clone-close`；`/clone-grant` / `/clone-revoke` 可以给标准模式等非创造模式会话临时注入工具使用权。
 
 ## 桌面版与 Web 都兼容
 
@@ -28,7 +31,9 @@
 | 模式 | 做法 | 利 | 弊 |
 |---|---|---|---|
 | `clean`（默认） | 官方 web 模板 + 只装待测插件 | 快；结果干净，崩了就是这个插件的问题；不带个人配置 | 测不出与已装插件的冲突、profile patch 的问题 |
-| `copy`（可选） | 复制当前 profile（含已装插件）和 home 级 `cordis.patch.yml`，再装待测插件 | 最接近你真实会崩的环境，能抓插件冲突、服务重复注册、patch 改坏组合 | 更慢更占盘；崩了难定位，需用 clean 对照；会去掉桌面专属 bundle；patch 里若有明文密钥会进临时目录（结束即删）；Windows 上 junction 按原目标重建（0.2.2 实测不再因符号链接权限失败） |
+| `copy`（可选） | 复制当前 profile（含已装插件）和 home 级 `cordis.patch.yml`，再装待测插件 | 最接近你真实会崩的环境，能抓插件冲突、服务重复注册、patch 改坏组合 | 更慢更占盘；崩了难定位，需用 clean 对照；会去掉桌面专属 bundle；patch 里若有明文密钥会进临时目录（结束即删）；Windows 上 junction 按原目标重建 |
+
+`copy` 模式的两个环境细节已在 0.2.2 上处理：当前 profile 从 `profileContext` 解析（宿主进程没有 `DSH_PROFILE_DIR` 也能用）；装新包时对齐跨盘 pnpm store 并重建 `node_modules`（避免 `ERR_PNPM_UNEXPECTED_STORE`）。
 
 ## 用法
 
@@ -82,6 +87,7 @@ clone_close { "id": "all" }
 - 侧边栏查看依赖你把聊天链接偏好设为「应用内侧边栏」；Web 版侧边栏浏览器默认关闭，需要在 profile patch 里启用 `ui-sidebar-browser`。
 - `/clone-grant` 的授权是会话级、不持久：客户端重启或会话恢复后要重新执行；恢复的会话不会自动回放授权。
 - `packageDir` 含 Windows shell 元字符（`& | < > ^ % ! "`）或控制字符时会被直接拒绝（`dsh` 走 PATH 回退时 spawn 经过 cmd.exe，宁拒绝不拼命令）。
+- 启动耗时的大头仍是 `dsh web` 本身（约 6s）；再往下提速只能做常驻分身 + 热重载，本插件暂不提供。
 
 ## 安装
 
@@ -93,27 +99,22 @@ GitHub Release 附件（不发 npm）。解压后：
 
 ## 兼容性（DSH 0.2.2-rc.1，2026-11-07 实测）
 
-结论：能安装、能激活、CLI / API / 预设 id 都在；但 0.1.1 在该版本上有 2 个已确认缺陷，源码已修复（将随 v0.1.2 发布）：
+结论：能安装、能激活、CLI / API / 预设 id 都在；0.1.1 在该版本上的缺陷都已在 v0.1.2–v0.1.6 修完。
 
-| 缺陷 | 现象 | 修复 |
-|---|---|---|
-| `clone_check` 漏判「宿主插件激活失败」 | 待测插件 `apply()` 抛错时，0.2.2 只往 stderr 打 `dsh: warning: 1 entry did not activate`，仍打印 `dsh web:` 并正常提供页面 → 0.1.1 误判 PASS | `startServer()` 解析 stderr 的告警块，`runClone()` 在页面检查后复查，命中即判 FAIL，并把告警与栈带回 `activationWarnings` / `serverLog` |
-| Windows 下 `mode: "copy"` 直接失败 | `fs.cp({ verbatimSymlinks: true })` 重建 pnpm junction 时触发 `EPERM`（未开开发者模式没有符号链接权限） | Windows 改为自写遍历复制：目录链接按原目标重建为 junction（不需要权限），文件链接解引用，失效链接跳过并记 note |
-
-v0.1.3 修复：`mode: "copy"` 改为优先从 `profileContext` 服务解析当前 profile 的 `dir` / `home`，`DSH_PROFILE_DIR` 只作兜底——宿主进程并不继承这个变量（它由 `shell-env` 注入给工具 shell），所以用 `dsh web` 启动时 copy 模式也能工作。
-
-v0.1.4 修复 copy 模式的「装入待测插件」：
-- 待测包已在复制的 profile 里（`link:` 指向同一个目录，且在 bundles 中）→ 跳过 `dsh plugin add`，测的就是 profile 里链接的同一份源码。
-- 真要装新包时，先对齐跨盘 pnpm 元数据：读 `node_modules/.modules.yaml` 的 `storeDir`（该文件实际是 JSON）、写进 clone 的 `pnpm-workspace.yaml`、删掉 `node_modules` 让 pnpm 按 lockfile 从暖 store 重建；仍失败则再清一次重试。避免了 `ERR_PNPM_UNEXPECTED_STORE` / `UNEXPECTED_VIRTUAL_STORE` 与 DSH bundle 对账失败。
-
-v0.1.5 提速：默认 `settleSeconds` 5 → 2（省 3s，慢机器可调回），无头浏览器启动与 profile/web 启动并行。
+| 版本 | 修复 / 改动 |
+|---|---|
+| v0.1.2 | 不再漏判「宿主插件激活失败」（stderr 的 `did not activate` 判 FAIL）；Windows copy 模式改用 junction 重建（EPERM 修复） |
+| v0.1.3 | copy 模式从 `profileContext` 解析当前 profile（宿主进程没有 `DSH_PROFILE_DIR`） |
+| v0.1.4 | copy 模式装入待测插件：已 `link` 的包跳过重装；新包对齐跨盘 pnpm store 并重建 `node_modules` |
+| v0.1.5 | 提速：默认 `settleSeconds` 5 → 2（省 3s），浏览器启动与 profile/web 启动并行 |
+| v0.1.6 | 首启弹窗自动点掉（「预览版说明」「开始使用」引导），截图/检查更干净 |
 
 **创造模式工具注册 E2E**（`scripts/verify-preset.mjs`）：copy 模式 clone 当前 web profile → 打开 clone 的 Web UI → 切「创造模式」→ 发一条消息 → 读 clone home 的 `sessions/**.zstd`。2026-11-07 在 Windows + DSH 0.2.2-rc.1 上 PASS，证据：
 
 - 会话事件 `agent-preset/selected = cordis`（这一轮确实跑在创造模式下）；
 - `system/message` 含 REMINDER 原文 `Clone check before touching the live client`；
-- `request/header` 的工具列表 58 个，其中包含 `clone_check` 与 `clone_close`；
-- 截图（切模式前后、发送后）与 JSON 报告写在 `--artifacts` 目录，默认 `%TEMP%\dsh-creator-plus\verify-preset`。
+- `request/header` 的工具列表含 `clone_check` 与 `clone_close`；
+- 截图与 JSON 报告写在 `--artifacts` 目录，默认 `%TEMP%\dsh-creator-plus\verify-preset`。
 
 clone 用的是临时 `DSH_HOME`，没有模型凭据，所以那条消息对应的一轮会以 `MISSING_CREDENTIAL` 失败——但系统提示与请求头在调用模型前就已落盘，既能拿到证据，也不消耗额度。复现：
 
@@ -123,16 +124,26 @@ node scripts/verify-preset.mjs \
   --home "C:\Users\<你>\.dsh"
 ```
 
-## 真机实测（2026-10-24，DSH 0.2.1-rc.2，Linux + Chromium）
+## 真机实测（2026-11-07，DSH 0.2.2-rc.1，Windows 11 + Edge）
 
-- 纯净分身：建 profile 约 0.2 秒，启动约 6 秒，无头检查约 8 秒。
-- 能抓到：`apply()` 抛错（`web boot: 1 entry did not activate`）、首页插槽渲染抛错（`slot entry crashed in ...`）。
-- 创造模式真实会话里，DeepSeek-V4.1-Flash 自己调用了 `clone_check`，正确报告 FAIL、定位到出错行，并说明页面因插槽错误边界没有白屏。
+| 场景 | 结果 |
+|---|---|
+| clean 基线 | PASS，约 9.2s（建 profile 0.3s + 启动 web 6.1s + 无头检查 2.8s） |
+| clean + 真插件 | PASS，约 11.3s（装入插件 ~1.1s） |
+| 对照插件（`apply()` 抛错） | FAIL，`activationWarnings` 带回 `did not activate` 与完整栈 |
+| 负向对照（期望文字不存在） | FAIL，原因「没找到期望文字」——判定不是空跑 |
+| Windows copy（跳过重装） | PASS，约 13.4–14.5s（复制 2.8–3.2s，重建 3 个 junction） |
+| copy + 装新包（跨盘） | PASS，装入 2.96s；修复前同场景失败 |
+| 标准模式 `/clone-grant` | 请求头工具 54 → 56，含 `clone_check` / `clone_close`，系统提示带 REMINDER |
+| 首启弹窗 | 自动点掉「继续」「关闭」，截图无弹窗 |
+
+更早的实测记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 测试
 
 ```
 npm test        # 单元 + Host 接线 + 端到端（假 dsh + 真实 Chromium；找不到浏览器会跳过浏览器用例）
+                # 当前 36 项全绿
 
 # 真机回归：创造模式下工具是否真的注册了（需要本机已装 dsh 与 Edge/Chrome）
 npm run verify-preset -- --profile-dir "C:\Users\<你>\.dsh\profiles\web" --home "C:\Users\<你>\.dsh"
