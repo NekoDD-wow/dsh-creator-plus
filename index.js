@@ -284,36 +284,82 @@ export function apply(ctx, rawConfig) {
     },
   }
 
-  // ---- 按 agent 安装 ----
-  const installs = new Map() // agent -> fiber[]
+  // ---- 按 agent 安装：预设自动安装 + 指令临时授权 ----
+  const installs = new Map() // agent -> fiber[]，按预设自动安装
+  const grants = new Map() // agent -> fiber[]，/clone-grant 授予（与预设无关）
   const presetOf = agent => {
     try { return ctx.agentPresets?.composedPreset(agent.ctx) } catch { return undefined }
   }
   const wants = agent => config.presets.includes(presetOf(agent))
+  const toolActive = agent => installs.has(agent) || grants.has(agent)
   const disposeFibers = fibers => Promise.all(fibers.map(f => f.dispose().catch(err => ctx.logger?.warn?.(`dsh-creator-plus: uninstall failed: ${err?.message ?? err}`))))
+
+  /** 给一个 agent 装上工具、提醒与斜杠指令（预设安装与指令授权共用）。 */
+  const installFor = agent => {
+    const fibers = [agent.ctx.inject(['systemPrompt', 'tools'], scope => {
+      scope.tools.register(checkTool)
+      scope.tools.register(closeTool)
+      scope.systemPrompt.section({
+        name: 'dsh-creator-plus:clone-check',
+        order: config.sectionOrder,
+        interpolate: false,
+        text: () => (toolActive(agent) ? REMINDER : ''),
+      })
+    })]
+    // commands 是可选的：headless / ACP 没有命令面，缺失时只是不注册斜杠指令，不影响工具。
+    fibers.push(agent.ctx.inject(['commands'], scope => {
+      scope.commands.register(checkCommand)
+      scope.commands.register(closeCommand)
+    }))
+    return fibers
+  }
+
+  const agentOf = invocation => ctx.agents.get?.(invocation.agent.id) ?? ctx.agents.list().find(a => a.id === invocation.agent.id)
+
+  // ---- 全局指令：给非目标预设的会话临时注入工具使用权（人类触发，模型不能自己开） ----
+  const grantCommand = {
+    name: 'clone-grant',
+    description: 'Give this session temporary access to clone_check / clone_close, even outside the configured presets. Usage: /clone-grant',
+    async handler(invocation) {
+      const agent = agentOf(invocation)
+      if (!agent) return { kind: 'error', text: '找不到当前会话的 agent。' }
+      if (wants(agent)) return { kind: 'success', text: '当前预设已经自带 clone_check / clone_close，无需注入。' }
+      if (grants.has(agent)) return { kind: 'success', text: '这个会话已经注入过，无需重复。' }
+      grants.set(agent, installFor(agent))
+      return { kind: 'success', text: '已给当前会话注入 clone_check / clone_close 与提醒，对下一步生效；用 /clone-revoke 收回。' }
+    },
+  }
+
+  const revokeCommand = {
+    name: 'clone-revoke',
+    description: 'Remove the temporary clone_check / clone_close access granted by /clone-grant. Usage: /clone-revoke',
+    async handler(invocation) {
+      const agent = agentOf(invocation)
+      const fibers = agent ? grants.get(agent) : undefined
+      if (!fibers) return { kind: 'success', text: '这个会话没有通过 /clone-grant 注入的工具。' }
+      grants.delete(agent)
+      await disposeFibers(fibers)
+      return { kind: 'success', text: '已收回 clone_check / clone_close（对下一步生效）。' }
+    },
+  }
+
+  // 全局命令挂在根上下文：任何预设的会话都能看到；没有 commands 服务时自动不注册。
+  const globalCommandsFiber = ctx.inject(['commands'], scope => {
+    scope.commands.register(grantCommand)
+    scope.commands.register(revokeCommand)
+  })
 
   const sync = agent => {
     const has = installs.has(agent)
     if (wants(agent) && !has) {
-      const fibers = [agent.ctx.inject(['systemPrompt', 'tools'], scope => {
-        scope.tools.register(checkTool)
-        scope.tools.register(closeTool)
-        scope.systemPrompt.section({
-          name: 'dsh-creator-plus:clone-check',
-          order: config.sectionOrder,
-          interpolate: false,
-          text: () => (wants(agent) ? REMINDER : ''),
-        })
-      })]
-      // commands 是可选的：headless / ACP 没有命令面，缺失时只是不注册斜杠指令，不影响工具。
-      fibers.push(agent.ctx.inject(['commands'], scope => {
-        scope.commands.register(checkCommand)
-        scope.commands.register(closeCommand)
-      }))
-      installs.set(agent, fibers)
+      // 预设自带工具时，先撤掉之前指令授予的那一份，避免同名工具重复注册。
+      const granted = grants.get(agent)
+      if (granted) { grants.delete(agent); void disposeFibers(granted) }
+      installs.set(agent, installFor(agent))
     } else if (!wants(agent) && has) {
       void disposeFibers(installs.get(agent))
       installs.delete(agent)
+      // 指令授予的那份保持不动（用户显式授权，独立于预设）。
     }
   }
 
@@ -322,16 +368,18 @@ export function apply(ctx, rawConfig) {
   // 空白会话切换预设时注册表会发 tools/change；据此增删。
   ctx.on('tools/change', () => { for (const agent of ctx.agents.list()) sync(agent) })
   ctx.on('agent/disposed', ({ agent }) => {
-    const fibers = installs.get(agent)
-    if (!fibers) return
+    const fibers = [...(installs.get(agent) || []), ...(grants.get(agent) || [])]
     installs.delete(agent)
-    void disposeFibers(fibers)
+    grants.delete(agent)
+    if (fibers.length) void disposeFibers(fibers)
   })
 
   ctx.effect(() => async () => {
-    const fibers = [...installs.values()].flat()
+    const fibers = [...installs.values()].flat().concat([...grants.values()].flat())
     installs.clear()
+    grants.clear()
     await disposeFibers(fibers)
+    await globalCommandsFiber.dispose().catch(() => {})
     await Promise.all([...kept.keys()].map(id => closeClone(id)))
   }, 'dsh-creator-plus: clones')
 }

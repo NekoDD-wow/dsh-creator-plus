@@ -48,10 +48,13 @@ clone_close { "id": "all" }
 /clone-check D:/work/my-plugin             # 默认 clean；可加 copy / keep
 /clone-check "D:/my work/my-plugin" copy   # 路径带空格用双引号
 /clone-close                               # 关闭所有 keepAlive 保留的分身
+/clone-grant                               # 给当前会话临时注入 clone_check / clone_close + 提醒
+/clone-revoke                              # 收回 /clone-grant 注入的那份
 ```
 
 - `/clone-check` 参数与工具一致：`clean|copy`、`keep`；结果直接显示在会话里，完整步骤/截图仍在 `clone_check` 工具结果中。
 - 指定单个分身的 id 用 `clone_close` 工具（`/clone-close` 只关闭全部）。
+- `/clone-grant` 用于**非创造模式**：标准模式等任意预设的会话都能用它临时装上工具与提醒（模型下一步就能调用 `clone_check`），`/clone-revoke` 收回。授权是会话级的，客户端重启/会话恢复后不保留；切到目标预设时预设自带的那份优先，不会重复注册。
 - 斜杠指令只在交互式 UI（Web / 桌面）可用；headless / ACP 自动化没有命令面。
 
 ## 配置（`cordis.patch.yml` 行的 `config`）
@@ -76,6 +79,7 @@ clone_close { "id": "all" }
 - 分身没有你的模型凭据，只验证前端能启动，不跑模型对话。
 - 找不到浏览器时降级为「后端就绪 + 首页可取」，结果里会写明未做视觉验证。
 - 侧边栏查看依赖你把聊天链接偏好设为「应用内侧边栏」；Web 版侧边栏浏览器默认关闭，需要在 profile patch 里启用 `ui-sidebar-browser`。
+- `/clone-grant` 的授权是会话级、不持久：客户端重启或会话恢复后要重新执行；恢复的会话不会自动回放授权。
 
 ## 安装
 

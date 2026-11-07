@@ -19,8 +19,10 @@ async function loadPlugin() {
   return import(pathToFileURL(join(dir, 'index.js')).href)
 }
 
+let agentSeq = 0
+
 function fakeAgent(preset) {
-  const agent = { preset, tools: [], sections: [], commands: [], disposed: 0 }
+  const agent = { id: `session-${++agentSeq}`, preset, tools: [], sections: [], commands: [], disposed: 0 }
   agent.ctx = {
     inject(_deps, cb) {
       const scope = {
@@ -38,15 +40,22 @@ function fakeAgent(preset) {
 function fakeCtx(agents) {
   const handlers = {}
   const effects = []
-  return {
-    handlers, effects,
-    agents: { list: () => agents },
+  const commands = []
+  const ctx = {
+    handlers, effects, commands,
+    agents: { list: () => agents, get: id => agents.find(a => a.id === id) },
     agentPresets: { composedPreset: c => agents.find(a => a.ctx === c)?.preset },
     on: (ev, fn) => { (handlers[ev] ||= []).push(fn) },
     emit: async (ev, p) => { for (const fn of handlers[ev] || []) await fn(p) },
     effect: fn => effects.push(fn()),
     logger: { warn() {} },
   }
+  // 根上下文的可选注入：全局命令（clone-grant / clone-revoke）走这里。
+  ctx.inject = (_deps, cb) => {
+    cb({ commands: { register: c => commands.push(c) } })
+    return { dispose: async () => {} }
+  }
+  return ctx
 }
 
 test('只给 cordis 预设安装，切换预设时增删', async () => {
@@ -83,6 +92,45 @@ test('只给 cordis 预设安装，切换预设时增删', async () => {
   assert.equal(std.disposed, 2)
 
   assert.throws(() => normalizeConfig({ presets: 'cordis' }), /presets/)
+})
+
+test('clone-grant / clone-revoke：给非目标预设临时注入工具，收回后清空', async () => {
+  const { apply } = await loadPlugin()
+  const std = fakeAgent('standard')
+  const creator = fakeAgent('cordis')
+  const ctx = fakeCtx([std, creator])
+  apply(ctx, { presets: ['cordis'] })
+
+  // 全局可见的两条授权指令
+  assert.deepEqual(ctx.commands.map(c => c.name), ['clone-grant', 'clone-revoke'])
+  const grant = ctx.commands.find(c => c.name === 'clone-grant')
+  const revoke = ctx.commands.find(c => c.name === 'clone-revoke')
+  const signal = new AbortController().signal
+
+  assert.deepEqual(std.tools, [])
+  const r1 = await grant.handler({ agent: { id: std.id }, rawInput: '', signal })
+  assert.equal(r1.kind, 'success')
+  assert.deepEqual(std.tools, ['clone_check', 'clone_close'])
+  assert.deepEqual(std.commands.map(c => c.name), ['clone-check', 'clone-close'])
+  assert.equal(std.sections.length, 1)
+  assert.match(std.sections[0].text(), /clone_check/)
+
+  const again = await grant.handler({ agent: { id: std.id }, rawInput: '', signal })
+  assert.match(again.text, /已经注入过/)
+  // 目标预设自带工具，不需要注入
+  const noop = await grant.handler({ agent: { id: creator.id }, rawInput: '', signal })
+  assert.match(noop.text, /无需注入/)
+
+  const r2 = await revoke.handler({ agent: { id: std.id }, rawInput: '', signal })
+  assert.equal(r2.kind, 'success')
+  assert.deepEqual(std.tools, [])
+  assert.equal(std.sections.length, 0)
+
+  // 再授权一次，agent 销毁时应自动回收（2 条 fiber）
+  await grant.handler({ agent: { id: std.id }, rawInput: '', signal })
+  await ctx.emit('agent/disposed', { agent: std })
+  assert.deepEqual(std.tools, [])
+  assert.equal(std.disposed, 4)
 })
 
 test('clone_check 的 mode 校验、clone_close 与斜杠指令处理器', async () => {
