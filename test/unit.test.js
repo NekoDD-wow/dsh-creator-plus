@@ -120,6 +120,15 @@ test('copyTreeJunctions 重建目录链接、跳过过滤项、解引用文件',
   }
 })
 
+test('斜杠指令 /clone-check 的输入解析', async () => {
+  const { parseCheckCommandInput } = await import('../index.js')
+  assert.deepEqual(parseCheckCommandInput('D:/work/plugin'), { packageDir: 'D:/work/plugin', mode: 'clean', keepAlive: false })
+  assert.deepEqual(parseCheckCommandInput('  D:/work/plugin copy keep '), { packageDir: 'D:/work/plugin', mode: 'copy', keepAlive: true })
+  assert.deepEqual(parseCheckCommandInput('"D:/my work/plugin" copy'), { packageDir: 'D:/my work/plugin', mode: 'copy', keepAlive: false })
+  assert.match(parseCheckCommandInput('').error, /用法/)
+  assert.match(parseCheckCommandInput('a b').error, /用法/)
+})
+
 test('defineTool 产出合法 JSON Schema：required 提到顶层、返回值去掉 undefined', async () => {
   const { defineTool } = await import('../index.js')
   const t = defineTool({ name: 'x', description: 'd', parameters: { id: { type: 'string', required: true, description: 'i' }, n: { type: 'boolean' } }, output: { schema: { type: 'json' }, render: () => [] }, execute: async () => ({ a: 1, b: undefined, c: [undefined] }) })

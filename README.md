@@ -10,6 +10,7 @@
 - **`clone_check` 工具**：临时 DSH_HOME → 建 profile（纯净 / 复制）→ `dsh plugin add` 待测包 → `--no-open --port <空闲端口>` 启动 → 等 `dsh web:` 就绪行 → 无头 Edge/Chrome/Chromium 打开 → 收集 pageerror、console.error、资源报错，检查非白屏、可选期望文字/元素 → 截图 → 清理。
 - **`clone_close` 工具**：关掉 `keepAlive` 保留的分身。
 - **创造模式提醒**：只给 `cordis`（创造模式）预设的会话注入一段短提醒：装进本体前先跑 `clone_check`，并显式说明这是官方 verification 指引中「不要另起浏览器 / 改 HOME」的唯一例外。其他预设看不到工具也不付提示词成本。
+- **斜杠指令**：`/clone-check <dir> [clean|copy] [keep]` 与 `/clone-close`，在输入框直接执行，不产生模型消息、不进上下文（token 0）；同样只给目标预设的会话。
 
 ## 桌面版与 Web 都兼容
 
@@ -38,6 +39,20 @@ clone_check { "packageDir": "D:/work/my-plugin", "mode": "copy" }
 clone_check { "packageDir": "D:/work/my-plugin", "keepAlive": true }   # 返回 viewUrl，可在侧边栏浏览器打开看
 clone_close { "id": "all" }
 ```
+
+### 斜杠指令（不进模型上下文）
+
+不想走模型轮时，在 Web / 桌面输入框里直接执行：
+
+```
+/clone-check D:/work/my-plugin             # 默认 clean；可加 copy / keep
+/clone-check "D:/my work/my-plugin" copy   # 路径带空格用双引号
+/clone-close                               # 关闭所有 keepAlive 保留的分身
+```
+
+- `/clone-check` 参数与工具一致：`clean|copy`、`keep`；结果直接显示在会话里，完整步骤/截图仍在 `clone_check` 工具结果中。
+- 指定单个分身的 id 用 `clone_close` 工具（`/clone-close` 只关闭全部）。
+- 斜杠指令只在交互式 UI（Web / 桌面）可用；headless / ACP 自动化没有命令面。
 
 ## 配置（`cordis.patch.yml` 行的 `config`）
 

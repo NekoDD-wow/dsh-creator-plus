@@ -85,6 +85,56 @@ function renderCheck(v) {
   return lines.join('\n')
 }
 
+/** 斜杠命令输入分词：空白分隔，双引号包住的段落算一个参数（路径带空格时用）。 */
+function tokenizeCommandInput(raw) {
+  const out = []
+  let cur = ''
+  let quote = null
+  for (const ch of String(raw || '')) {
+    if (quote) {
+      if (ch === quote) quote = null
+      else cur += ch
+      continue
+    }
+    if (ch === '"' || ch === "'") { quote = ch; continue }
+    if (/\s/.test(ch)) {
+      if (cur) { out.push(cur); cur = '' }
+      continue
+    }
+    cur += ch
+  }
+  if (cur) out.push(cur)
+  return out
+}
+
+/**
+ * 解析 `/clone-check` 的输入：`<packageDir> [clean|copy] [keep]`。
+ * 返回 { error } 或 { packageDir, mode, keepAlive }。
+ */
+export function parseCheckCommandInput(rawInput) {
+  const positional = []
+  let mode = 'clean'
+  let keepAlive = false
+  for (const token of tokenizeCommandInput(rawInput)) {
+    if (token === 'keep') keepAlive = true
+    else if (token === 'clean' || token === 'copy') mode = token
+    else positional.push(token)
+  }
+  if (positional.length !== 1) return { error: '用法：/clone-check <packageDir> [clean|copy] [keep]（路径含空格请用双引号）' }
+  return { packageDir: positional[0], mode, keepAlive }
+}
+
+/** 斜杠命令的简短结果（完整步骤/截图仍在工具结果里）。 */
+export function renderCheckBrief(r, expiresAt) {
+  const lines = [`${r.ok ? 'PASS' : 'FAIL'} · clone ${r.id} · ${r.mode} · ${Math.round((r.ms || 0) / 1000)}s`]
+  if (r.error) lines.push(`Error: ${r.error}`)
+  for (const reason of r.verdict?.reasons || []) lines.push(`Reason: ${reason}`)
+  if (r.activationWarnings?.length) lines.push(`Activation: ${r.activationWarnings[0].split('\n')[0]}`)
+  if (r.viewUrl) lines.push(`viewUrl（${expiresAt} 到期，用 /clone-close 关闭）：${r.viewUrl}`)
+  for (const note of r.notes || []) lines.push(`Note: ${note}`)
+  return lines.join('\n')
+}
+
 export function apply(ctx, rawConfig) {
   const config = normalizeConfig(rawConfig)
   const kept = new Map() // id -> { close, timer, expiresAt }
@@ -97,6 +147,41 @@ export function apply(ctx, rawConfig) {
     clearTimeout(entry.timer)
     await entry.close().catch(err => ctx.logger?.warn?.(`dsh-creator-plus: close ${id} failed: ${err?.message ?? err}`))
     return true
+  }
+
+  /** 工具与斜杠命令共用的一次 clone 检查。 */
+  async function executeClone(args, exec) {
+    const mode = args.mode === undefined || args.mode === '' ? 'clean' : args.mode
+    if (mode !== 'clean' && mode !== 'copy') throw new Error('mode 只能是 "clean" 或 "copy"')
+    const dsh = resolveDshCommand({ override: config.dshCommand })
+    const browser = findBrowser({ override: config.browserPath })
+    const r = await runClone({
+      dsh,
+      browser,
+      browserArgs: config.browserArgs,
+      packageDir: args.packageDir || undefined,
+      mode,
+      keepAlive: args.keepAlive === true,
+      expectText: args.expectText || undefined,
+      expectSelector: args.expectSelector || undefined,
+      startTimeoutMs: config.startTimeoutSeconds * 1000,
+      loadTimeoutMs: config.loadTimeoutSeconds * 1000,
+      settleMs: config.settleSeconds * 1000,
+      ignoreErrors: config.ignoreErrors,
+      artifactsDir,
+      sourceProfileDir: process.env.DSH_PROFILE_DIR,
+      sourceHome: process.env.DSH_HOME || join(homedir(), '.dsh'),
+      signal: exec?.signal,
+    })
+    let expiresAt
+    if (r.kept) {
+      const ms = config.keepAliveMinutes * 60 * 1000
+      expiresAt = new Date(Date.now() + ms).toISOString()
+      const timer = setTimeout(() => { void closeClone(r.id) }, ms)
+      timer.unref?.()
+      kept.set(r.id, { close: r.close, timer, expiresAt })
+    }
+    return { r, expiresAt }
   }
 
   const checkTool = defineTool({
@@ -115,36 +200,13 @@ export function apply(ctx, rawConfig) {
       render: (_args, value) => [{ type: 'text', text: renderCheck(value) }],
     },
     async execute(args, exec) {
-      const mode = args.mode === undefined || args.mode === '' ? 'clean' : args.mode
-      if (mode !== 'clean' && mode !== 'copy') throw new Error('mode 只能是 "clean" 或 "copy"')
-      const dsh = resolveDshCommand({ override: config.dshCommand })
-      const browser = findBrowser({ override: config.browserPath })
-      const r = await runClone({
-        dsh,
-        browser,
-        browserArgs: config.browserArgs,
+      const { r, expiresAt } = await executeClone({
         packageDir: args.packageDir || undefined,
-        mode,
+        mode: args.mode,
         keepAlive: args.keepAlive === true,
         expectText: args.expectText || undefined,
         expectSelector: args.expectSelector || undefined,
-        startTimeoutMs: config.startTimeoutSeconds * 1000,
-        loadTimeoutMs: config.loadTimeoutSeconds * 1000,
-        settleMs: config.settleSeconds * 1000,
-        ignoreErrors: config.ignoreErrors,
-        artifactsDir,
-        sourceProfileDir: process.env.DSH_PROFILE_DIR,
-        sourceHome: process.env.DSH_HOME || join(homedir(), '.dsh'),
-        signal: exec?.signal,
-      })
-      let expiresAt
-      if (r.kept) {
-        const ms = config.keepAliveMinutes * 60 * 1000
-        expiresAt = new Date(Date.now() + ms).toISOString()
-        const timer = setTimeout(() => { void closeClone(r.id) }, ms)
-        timer.unref?.()
-        kept.set(r.id, { close: r.close, timer, expiresAt })
-      }
+      }, exec)
       // 只返回可序列化字段
       return {
         id: r.id,
@@ -187,17 +249,53 @@ export function apply(ctx, rawConfig) {
     },
   })
 
+  // ---- 斜杠指令：交互式 UI 里直接执行，不产生模型消息、不烧 token ----
+  // 只在目标预设的 agent 上注册（与工具同一套作用域），命令输入不进上下文。
+  const checkCommand = {
+    name: 'clone-check',
+    description: 'Boot a disposable clone, install a bundle and check it (no model message). Usage: /clone-check <packageDir> [clean|copy] [keep]',
+    input: { hint: '<packageDir> [clean|copy] [keep]' },
+    async handler(invocation) {
+      const parsed = parseCheckCommandInput(invocation.rawInput)
+      if (parsed.error) return { kind: 'error', text: parsed.error }
+      try {
+        const { r, expiresAt } = await executeClone({
+          packageDir: parsed.packageDir,
+          mode: parsed.mode,
+          keepAlive: parsed.keepAlive,
+        }, { signal: invocation.signal })
+        return { kind: r.ok ? 'success' : 'error', text: renderCheckBrief(r, expiresAt) }
+      } catch (e) {
+        return { kind: 'error', text: `clone_check 失败：${e.message}` }
+      }
+    },
+  }
+
+  const closeCommand = {
+    // 不声明 input：输入 /clone-close 回车直接执行（关闭全部分身）。指定单个 id 用 clone_close 工具。
+    name: 'clone-close',
+    description: 'Stop all clones kept alive by clone_check. Usage: /clone-close',
+    async handler(invocation) {
+      const id = String(invocation.rawInput || '').trim() || 'all'
+      const ids = id === 'all' ? [...kept.keys()] : [id]
+      const closed = []
+      for (const candidate of ids) if (await closeClone(candidate)) closed.push(candidate)
+      return { kind: 'success', text: closed.length ? `Closed: ${closed.join(', ')}` : 'No matching clone is running.' }
+    },
+  }
+
   // ---- 按 agent 安装 ----
-  const installs = new Map() // agent -> fiber
+  const installs = new Map() // agent -> fiber[]
   const presetOf = agent => {
     try { return ctx.agentPresets?.composedPreset(agent.ctx) } catch { return undefined }
   }
   const wants = agent => config.presets.includes(presetOf(agent))
+  const disposeFibers = fibers => Promise.all(fibers.map(f => f.dispose().catch(err => ctx.logger?.warn?.(`dsh-creator-plus: uninstall failed: ${err?.message ?? err}`))))
 
   const sync = agent => {
     const has = installs.has(agent)
     if (wants(agent) && !has) {
-      const fiber = agent.ctx.inject(['systemPrompt', 'tools'], scope => {
+      const fibers = [agent.ctx.inject(['systemPrompt', 'tools'], scope => {
         scope.tools.register(checkTool)
         scope.tools.register(closeTool)
         scope.systemPrompt.section({
@@ -206,12 +304,16 @@ export function apply(ctx, rawConfig) {
           interpolate: false,
           text: () => (wants(agent) ? REMINDER : ''),
         })
-      })
-      installs.set(agent, fiber)
+      })]
+      // commands 是可选的：headless / ACP 没有命令面，缺失时只是不注册斜杠指令，不影响工具。
+      fibers.push(agent.ctx.inject(['commands'], scope => {
+        scope.commands.register(checkCommand)
+        scope.commands.register(closeCommand)
+      }))
+      installs.set(agent, fibers)
     } else if (!wants(agent) && has) {
-      const fiber = installs.get(agent)
+      void disposeFibers(installs.get(agent))
       installs.delete(agent)
-      fiber.dispose().catch(err => ctx.logger?.warn?.(`dsh-creator-plus: uninstall failed: ${err?.message ?? err}`))
     }
   }
 
@@ -220,16 +322,16 @@ export function apply(ctx, rawConfig) {
   // 空白会话切换预设时注册表会发 tools/change；据此增删。
   ctx.on('tools/change', () => { for (const agent of ctx.agents.list()) sync(agent) })
   ctx.on('agent/disposed', ({ agent }) => {
-    const fiber = installs.get(agent)
-    if (!fiber) return
+    const fibers = installs.get(agent)
+    if (!fibers) return
     installs.delete(agent)
-    fiber.dispose().catch(() => {})
+    void disposeFibers(fibers)
   })
 
   ctx.effect(() => async () => {
-    const fibers = [...installs.values()]
+    const fibers = [...installs.values()].flat()
     installs.clear()
-    await Promise.all(fibers.map(f => f.dispose().catch(() => {})))
+    await disposeFibers(fibers)
     await Promise.all([...kept.keys()].map(id => closeClone(id)))
   }, 'dsh-creator-plus: clones')
 }
