@@ -189,6 +189,12 @@ test('parseModulesStoreDir 从 .modules.yaml 取 storeDir（JSON 与 YAML 两种
   assert.equal(parseModulesStoreDir('virtualStoreDir: .pnpm\n'), undefined)
 })
 
+test('默认 settleSeconds 是 2s（提速），显式配置仍生效', async () => {
+  const { normalizeConfig } = await import('../index.js')
+  assert.equal(normalizeConfig({}).settleSeconds, 2)
+  assert.equal(normalizeConfig({ settleSeconds: 4 }).settleSeconds, 4)
+})
+
 test('defineTool 产出合法 JSON Schema：required 提到顶层、返回值去掉 undefined', async () => {
   const { defineTool } = await import('../index.js')
   const t = defineTool({ name: 'x', description: 'd', parameters: { id: { type: 'string', required: true, description: 'i' }, n: { type: 'boolean' } }, output: { schema: { type: 'json' }, render: () => [] }, execute: async () => ({ a: 1, b: undefined, c: [undefined] }) })

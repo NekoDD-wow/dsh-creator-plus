@@ -1,6 +1,6 @@
 # 创造模式增强 · Creator Mode Plus
 
-**v0.1.4** · DSH Host 插件 · 包名 `@dsh-external/dsh-creator-plus`
+**v0.1.5** · DSH Host 插件 · 包名 `@dsh-external/dsh-creator-plus`
 
 创造模式经常安装、修改、调试插件，一不小心就把本体客户端弄崩。本插件给创造模式加一个「分身」：
 在临时的纯净 `DSH_HOME` 里启动一个 DSH，把待测插件装进去，用无头浏览器打开它的前端，确认能正常启动，**再**装进本体。
@@ -67,7 +67,7 @@ clone_close { "id": "all" }
 | `browserArgs` | `[]` | 额外浏览器参数（Linux 容器里可能需要 `--no-sandbox`） |
 | `startTimeoutSeconds` | 120 | 等分身就绪的上限 |
 | `loadTimeoutSeconds` | 60 | 等页面 load 的上限 |
-| `settleSeconds` | 5 | load 后再等多久收集报错 |
+| `settleSeconds` | 2 | load 后再等多久收集报错（慢机器可调大） |
 | `keepAliveMinutes` | 30 | 保留的分身多久自动关闭 |
 | `ignoreErrors` | `[]` | 忽略的报错正则 |
 | `artifactsDir` | 系统临时目录 `/dsh-creator-plus/shots` | 截图存放处 |
@@ -104,6 +104,8 @@ v0.1.3 修复：`mode: "copy"` 改为优先从 `profileContext` 服务解析当�
 v0.1.4 修复 copy 模式的「装入待测插件」：
 - 待测包已在复制的 profile 里（`link:` 指向同一个目录，且在 bundles 中）→ 跳过 `dsh plugin add`，测的就是 profile 里链接的同一份源码。
 - 真要装新包时，先对齐跨盘 pnpm 元数据：读 `node_modules/.modules.yaml` 的 `storeDir`（该文件实际是 JSON）、写进 clone 的 `pnpm-workspace.yaml`、删掉 `node_modules` 让 pnpm 按 lockfile 从暖 store 重建；仍失败则再清一次重试。避免了 `ERR_PNPM_UNEXPECTED_STORE` / `UNEXPECTED_VIRTUAL_STORE` 与 DSH bundle 对账失败。
+
+v0.1.5 提速：默认 `settleSeconds` 5 → 2（省 3s，慢机器可调回），无头浏览器启动与 profile/web 启动并行。
 
 **创造模式工具注册 E2E**（`scripts/verify-preset.mjs`）：copy 模式 clone 当前 web profile → 打开 clone 的 Web UI → 切「创造模式」→ 发一条消息 → 读 clone home 的 `sessions/**.zstd`。2026-11-07 在 Windows + DSH 0.2.2-rc.1 上 PASS，证据：
 

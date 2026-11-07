@@ -16,7 +16,7 @@ const DEFAULTS = {
   browserArgs: [],
   startTimeoutSeconds: 120,
   loadTimeoutSeconds: 60,
-  settleSeconds: 5,
+  settleSeconds: 2,
   keepAliveMinutes: 30,
   ignoreErrors: [],
   artifactsDir: undefined,
