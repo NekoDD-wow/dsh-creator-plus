@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile, symlink, readlink, rm } from 'node:fs/promis
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { parseUrlLine, redactUrl, filterBundlesForClone, childEnv, judge, filterIgnored, parseActivationWarnings, copyTreeJunctions } from '../lib/clone.js'
+import { parseUrlLine, redactUrl, filterBundlesForClone, childEnv, judge, filterIgnored, parseActivationWarnings, copyTreeJunctions, assertSafePackageDir } from '../lib/clone.js'
 import { resolveDshCommand, browserCandidates, findBrowser } from '../lib/locate.js'
 
 test('parseUrlLine 识别 dsh web 行并去掉 ANSI', () => {
@@ -127,6 +127,16 @@ test('斜杠指令 /clone-check 的输入解析', async () => {
   assert.deepEqual(parseCheckCommandInput('"D:/my work/plugin" copy'), { packageDir: 'D:/my work/plugin', mode: 'copy', keepAlive: false })
   assert.match(parseCheckCommandInput('').error, /用法/)
   assert.match(parseCheckCommandInput('a b').error, /用法/)
+})
+
+test('assertSafePackageDir：拒绝 shell 元字符，正常路径放行', () => {
+  for (const ok of ['C:/work/my-plugin', 'C:/my work/plugin', 'D:\\work\\中文插件']) {
+    assert.doesNotThrow(() => assertSafePackageDir(ok), ok)
+  }
+  for (const bad of ['C:/x/a&calc', 'C:/x/a|b', 'C:/x/a"b', 'C:/x/%PATH%', 'C:/x/a<b', 'C:/x/a!b', 'C:/x/\x01bad']) {
+    assert.throws(() => assertSafePackageDir(bad), /不安全|参数不合法/, bad)
+  }
+  assert.throws(() => assertSafePackageDir(''), /非空/)
 })
 
 test('defineTool 产出合法 JSON Schema：required 提到顶层、返回值去掉 undefined', async () => {

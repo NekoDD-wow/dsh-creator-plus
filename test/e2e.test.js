@@ -127,3 +127,8 @@ test('复制模式：目录链接在副本里被重建（Windows junction 不依
 test('参数校验：相对路径被拒绝', async () => {
   await assert.rejects(runClone({ dsh, packageDir: 'relative/dir' }), /绝对路径/)
 })
+
+test('参数校验：packageDir 含 shell 元字符直接拒绝（不交给 shell）', async () => {
+  const malicious = process.platform === 'win32' ? 'C:/work/a&calc' : '/tmp/a&calc'
+  await assert.rejects(runClone({ dsh, packageDir: malicious }), /参数不合法/)
+})

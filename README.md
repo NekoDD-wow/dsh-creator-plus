@@ -1,6 +1,6 @@
 # 创造模式增强 · Creator Mode Plus
 
-**v0.1.1** · DSH Host 插件 · 包名 `@dsh-external/dsh-creator-plus`
+**v0.1.2** · DSH Host 插件 · 包名 `@dsh-external/dsh-creator-plus`
 
 创造模式经常安装、修改、调试插件，一不小心就把本体客户端弄崩。本插件给创造模式加一个「分身」：
 在临时的纯净 `DSH_HOME` 里启动一个 DSH，把待测插件装进去，用无头浏览器打开它的前端，确认能正常启动，**再**装进本体。
@@ -80,6 +80,7 @@ clone_close { "id": "all" }
 - 找不到浏览器时降级为「后端就绪 + 首页可取」，结果里会写明未做视觉验证。
 - 侧边栏查看依赖你把聊天链接偏好设为「应用内侧边栏」；Web 版侧边栏浏览器默认关闭，需要在 profile patch 里启用 `ui-sidebar-browser`。
 - `/clone-grant` 的授权是会话级、不持久：客户端重启或会话恢复后要重新执行；恢复的会话不会自动回放授权。
+- `packageDir` 含 Windows shell 元字符（`& | < > ^ % ! "`）或控制字符时会被直接拒绝（`dsh` 走 PATH 回退时 spawn 经过 cmd.exe，宁拒绝不拼命令）。
 
 ## 安装
 
@@ -127,3 +128,5 @@ npm test        # 单元 + Host 接线 + 端到端（假 dsh + 真实 Chromium�
 # 真机回归：创造模式下工具是否真的注册了（需要本机已装 dsh 与 Edge/Chrome）
 npm run verify-preset -- --profile-dir "C:\Users\<你>\.dsh\profiles\web" --home "C:\Users\<你>\.dsh"
 ```
+
+注：`scripts/verify-preset.mjs` 与 `npm run verify-preset` 只在 GitHub 源码仓库里，发布 zip 不含 `scripts/`。
