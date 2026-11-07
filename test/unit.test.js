@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile, symlink, readlink, rm } from 'node:fs/promis
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { parseUrlLine, redactUrl, filterBundlesForClone, childEnv, judge, filterIgnored, parseActivationWarnings, copyTreeJunctions, assertSafePackageDir, resolveCloneSource } from '../lib/clone.js'
+import { parseUrlLine, redactUrl, filterBundlesForClone, childEnv, judge, filterIgnored, parseActivationWarnings, copyTreeJunctions, assertSafePackageDir, resolveCloneSource, readBundleName, findInstalledLink, parseModulesStoreDir } from '../lib/clone.js'
 import { resolveDshCommand, browserCandidates, findBrowser } from '../lib/locate.js'
 
 test('parseUrlLine 识别 dsh web 行并去掉 ANSI', () => {
@@ -151,6 +151,42 @@ test('resolveCloneSource：profileContext 优先，env 兜底', () => {
   assert.deepEqual(resolveCloneSource({ profileContext: { dir: 'C:/pc/web' }, env: { DSH_PROFILE_DIR: 'C:/env' }, home: '/home/u' }), { sourceProfileDir: 'C:/pc/web', sourceHome: join('/home/u', '.dsh') })
   // 两样都没有：dir 为空（copy 模式会给出明确错误）
   assert.deepEqual(resolveCloneSource({ env: {}, home: '/home/u' }), { sourceProfileDir: undefined, sourceHome: join('/home/u', '.dsh') })
+})
+
+test('copy 模式：profile 里已 link 同一目录的待测包判定', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'reuse-'))
+  try {
+    const bundle = join(root, 'bundle')
+    const profile = join(root, 'profile')
+    await mkdir(bundle, { recursive: true })
+    await mkdir(profile, { recursive: true })
+    await writeFile(join(bundle, 'package.json'), JSON.stringify({ name: '@t/ok' }))
+    const link = 'link:' + bundle.replace(/\\/g, '/')
+    const writeProfile = obj => writeFile(join(profile, 'package.json'), JSON.stringify(obj))
+
+    await writeProfile({ dependencies: { '@t/ok': link }, dsh: { profile: { bundles: ['@t/ok'] } } })
+    assert.equal(await findInstalledLink(profile, bundle, '@t/ok'), link)
+    assert.equal(await readBundleName(bundle), '@t/ok')
+
+    // 不在 bundles 里 → 不跳过（需要 dsh plugin add 把它加进 bundles）
+    await writeProfile({ dependencies: { '@t/ok': link }, dsh: { profile: { bundles: [] } } })
+    assert.equal(await findInstalledLink(profile, bundle, '@t/ok'), undefined)
+
+    // 版本依赖 / 指向别的目录 → 不跳过
+    await writeProfile({ dependencies: { '@t/ok': '^1.0.0' }, dsh: { profile: { bundles: ['@t/ok'] } } })
+    assert.equal(await findInstalledLink(profile, bundle, '@t/ok'), undefined)
+    await writeProfile({ dependencies: { '@t/ok': 'link:' + join(root, 'other').replace(/\\/g, '/') }, dsh: { profile: { bundles: ['@t/ok'] } } })
+    assert.equal(await findInstalledLink(profile, bundle, '@t/ok'), undefined)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('parseModulesStoreDir 从 .modules.yaml 取 storeDir（JSON 与 YAML 两种写法）', () => {
+  assert.equal(parseModulesStoreDir(JSON.stringify({ storeDir: 'D:\\.pnpm-store\\v11', virtualStoreDir: 'D:\\dsh-home\\profiles\\web\\node_modules\\.pnpm' })), 'D:\\.pnpm-store\\v11')
+  assert.equal(parseModulesStoreDir('hoistPattern:\n  - "*"\nstoreDir: D:\\.pnpm-store\\v11\n'), 'D:\\.pnpm-store\\v11')
+  assert.equal(parseModulesStoreDir('storeDir: "/home/u/.local/share/pnpm/store/v10"\n'), '/home/u/.local/share/pnpm/store/v10')
+  assert.equal(parseModulesStoreDir('virtualStoreDir: .pnpm\n'), undefined)
 })
 
 test('defineTool 产出合法 JSON Schema：required 提到顶层、返回值去掉 undefined', async () => {

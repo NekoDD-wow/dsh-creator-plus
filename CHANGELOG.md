@@ -2,6 +2,23 @@
 
 本项目遵循语义化版本；记录到每次 GitHub Release 的变更。
 
+## v0.1.4（2026-11-07）
+
+### 修复
+
+- **copy 模式的「装入待测插件」跨盘失败**：clone 的临时 home 在 `%TEMP%`（C:），而 profile 在
+  另一块盘（如 `C:\Users\...\.dsh` → `D:\dsh-home`）。复制来的 `node_modules/.modules.yaml`
+  （JSON）记着本体盘上的 `storeDir` / `virtualStoreDir`，pnpm 报
+  `ERR_PNPM_UNEXPECTED_STORE` / `ERR_PNPM_UNEXPECTED_VIRTUAL_STORE`。
+  - 待测包已在复制的 profile 里（`link:` 指向同一目录且在 bundles 中）→ **跳过重新安装**，
+    直接测 profile 里链接的那份源码（dsh-prefill 这类已 link 的包不再需要 pnpm）。
+  - 真要装新包时：从 `.modules.yaml` 解析 `storeDir` → 写进 clone 的 `pnpm-workspace.yaml`
+    （pnpm 11 只认这里，`.npmrc` 与 `npm_config_store_dir` 不生效）→ 删 `node_modules` 让 pnpm
+    按 lockfile 从暖 store 重建；仍失败则清一次再重试。
+- 真机验证（Windows，web profile，跨 C:/D: 盘）：
+  - A 跳过路径：`@local/dsh-prefill` copy 模式 PASS（13.4s，无「装入待测插件」步骤）。
+  - B 安装路径：全新对照包 copy 模式 PASS（安装 2.96s、整次 17.2s，一次通过）。
+
 ## v0.1.3（2026-11-07）
 
 ### 修复

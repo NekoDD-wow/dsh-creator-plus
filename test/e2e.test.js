@@ -124,6 +124,24 @@ test('复制模式：目录链接在副本里被重建（Windows junction 不依
   }
 })
 
+test('复制模式：待测包已 link 进 profile 时跳过重新安装', async () => {
+  const bundleDir = await mkdtemp(join(tmpdir(), 'bundle-reuse-'))
+  await writeFile(join(bundleDir, 'package.json'), JSON.stringify({ name: '@t/reuse', fakeBehavior: 'ok', dsh: { bundle: { patch: './p.yml' } } }))
+  const src = await mkdtemp(join(tmpdir(), 'srchome-'))
+  const prof = join(src, 'profiles', 'web')
+  await mkdir(prof, { recursive: true })
+  await writeFile(join(prof, 'package.json'), JSON.stringify({
+    dependencies: { '@t/reuse': 'link:' + bundleDir.replace(/\\/g, '/') },
+    dsh: { profile: { bundles: ['@t/reuse'] } },
+  }))
+  const tmpRoot = await mkdtemp(join(tmpdir(), 'e2e-'))
+  const r = await runClone({ dsh, browser: undefined, mode: 'copy', packageDir: bundleDir, tmpRoot, sourceProfileDir: prof, sourceHome: src, startTimeoutMs: 20000, settleMs: 800 })
+  assert.equal(r.ok, true, JSON.stringify(r, null, 2))
+  assert.ok(!(r.steps || []).some(s => s.name === '装入待测插件'), '已在 profile 里时不应再 dsh plugin add')
+  assert.ok(r.notes.some(n => n.includes('跳过重新安装')), r.notes.join('\n'))
+  assert.deepEqual((await readdir(tmpRoot)).filter(n => n.startsWith('dsh-clone-')), [])
+})
+
 test('参数校验：相对路径被拒绝', async () => {
   await assert.rejects(runClone({ dsh, packageDir: 'relative/dir' }), /绝对路径/)
 })
