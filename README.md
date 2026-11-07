@@ -1,6 +1,6 @@
 # 创造模式增强 · Creator Mode Plus
 
-**v0.1.2** · DSH Host 插件 · 包名 `@dsh-external/dsh-creator-plus`
+**v0.1.3** · DSH Host 插件 · 包名 `@dsh-external/dsh-creator-plus`
 
 创造模式经常安装、修改、调试插件，一不小心就把本体客户端弄崩。本插件给创造模式加一个「分身」：
 在临时的纯净 `DSH_HOME` 里启动一个 DSH，把待测插件装进去，用无头浏览器打开它的前端，确认能正常启动，**再**装进本体。
@@ -99,7 +99,7 @@ GitHub Release 附件（不发 npm）。解压后：
 | `clone_check` 漏判「宿主插件激活失败」 | 待测插件 `apply()` 抛错时，0.2.2 只往 stderr 打 `dsh: warning: 1 entry did not activate`，仍打印 `dsh web:` 并正常提供页面 → 0.1.1 误判 PASS | `startServer()` 解析 stderr 的告警块，`runClone()` 在页面检查后复查，命中即判 FAIL，并把告警与栈带回 `activationWarnings` / `serverLog` |
 | Windows 下 `mode: "copy"` 直接失败 | `fs.cp({ verbatimSymlinks: true })` 重建 pnpm junction 时触发 `EPERM`（未开开发者模式没有符号链接权限） | Windows 改为自写遍历复制：目录链接按原目标重建为 junction（不需要权限），文件链接解引用，失效链接跳过并记 note |
 
-追加修复（尚未发版）：`mode: "copy"` 改为优先从 `profileContext` 服务解析当前 profile 的 `dir` / `home`，`DSH_PROFILE_DIR` 只作兜底——宿主进程并不继承这个变量（它由 `shell-env` 注入给工具 shell），所以用 `dsh web` 启动时 copy 模式也能工作。
+v0.1.3 修复：`mode: "copy"` 改为优先从 `profileContext` 服务解析当前 profile 的 `dir` / `home`，`DSH_PROFILE_DIR` 只作兜底——宿主进程并不继承这个变量（它由 `shell-env` 注入给工具 shell），所以用 `dsh web` 启动时 copy 模式也能工作。
 
 **创造模式工具注册 E2E**（`scripts/verify-preset.mjs`）：copy 模式 clone 当前 web profile → 打开 clone 的 Web UI → 切「创造模式」→ 发一条消息 → 读 clone home 的 `sessions/**.zstd`。2026-11-07 在 Windows + DSH 0.2.2-rc.1 上 PASS，证据：
 

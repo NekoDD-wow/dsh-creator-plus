@@ -1,6 +1,6 @@
 {
   "name": "@dsh-external/dsh-creator-plus",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "description": "创造模式增强：一键在临时纯净 profile 中启动 DSH 分身，用无头浏览器检查前端能否正常启动，避免改坏本体客户端。",
   "type": "module",
