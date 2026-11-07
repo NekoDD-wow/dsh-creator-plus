@@ -26,7 +26,7 @@
 | 模式 | 做法 | 利 | 弊 |
 |---|---|---|---|
 | `clean`（默认） | 官方 web 模板 + 只装待测插件 | 快；结果干净，崩了就是这个插件的问题；不带个人配置 | 测不出与已装插件的冲突、profile patch 的问题 |
-| `copy`（可选） | 复制当前 profile（含已装插件）和 home 级 `cordis.patch.yml`，再装待测插件 | 最接近你真实会崩的环境，能抓插件冲突、服务重复注册、patch 改坏组合 | 更慢更占盘；崩了难定位，需用 clean 对照；会去掉桌面专属 bundle；patch 里若有明文密钥会进临时目录（结束即删）；Windows 上 node_modules 的 junction 可能仍指向本体 |
+| `copy`（可选） | 复制当前 profile（含已装插件）和 home 级 `cordis.patch.yml`，再装待测插件 | 最接近你真实会崩的环境，能抓插件冲突、服务重复注册、patch 改坏组合 | 更慢更占盘；崩了难定位，需用 clean 对照；会去掉桌面专属 bundle；patch 里若有明文密钥会进临时目录（结束即删）；Windows 上 junction 按原目标重建（0.2.2 实测不再因符号链接权限失败） |
 
 ## 用法
 
@@ -70,6 +70,30 @@ GitHub Release 附件（不发 npm）。解压后：
 - 桌面版：先完全退出应用，`dsh plugin --profile desktop add <解压目录>`，再打开
 - 或在创造模式里让 AI 用 `plugin_manager install_bundle` 安装该目录
 
+## 兼容性（DSH 0.2.2-rc.1，2026-11-07 实测）
+
+结论：能安装、能激活、CLI / API / 预设 id 都在；但 0.1.1 在该版本上有 2 个已确认缺陷，源码已修复（将随 v0.1.2 发布）：
+
+| 缺陷 | 现象 | 修复 |
+|---|---|---|
+| `clone_check` 漏判「宿主插件激活失败」 | 待测插件 `apply()` 抛错时，0.2.2 只往 stderr 打 `dsh: warning: 1 entry did not activate`，仍打印 `dsh web:` 并正常提供页面 → 0.1.1 误判 PASS | `startServer()` 解析 stderr 的告警块，`runClone()` 在页面检查后复查，命中即判 FAIL，并把告警与栈带回 `activationWarnings` / `serverLog` |
+| Windows 下 `mode: "copy"` 直接失败 | `fs.cp({ verbatimSymlinks: true })` 重建 pnpm junction 时触发 `EPERM`（未开开发者模式没有符号链接权限） | Windows 改为自写遍历复制：目录链接按原目标重建为 junction（不需要权限），文件链接解引用，失效链接跳过并记 note |
+
+**创造模式工具注册 E2E**（`scripts/verify-preset.mjs`）：copy 模式 clone 当前 web profile → 打开 clone 的 Web UI → 切「创造模式」→ 发一条消息 → 读 clone home 的 `sessions/**.zstd`。2026-11-07 在 Windows + DSH 0.2.2-rc.1 上 PASS，证据：
+
+- 会话事件 `agent-preset/selected = cordis`（这一轮确实跑在创造模式下）；
+- `system/message` 含 REMINDER 原文 `Clone check before touching the live client`；
+- `request/header` 的工具列表 58 个，其中包含 `clone_check` 与 `clone_close`；
+- 截图（切模式前后、发送后）与 JSON 报告写在 `--artifacts` 目录，默认 `%TEMP%\dsh-creator-plus\verify-preset`。
+
+clone 用的是临时 `DSH_HOME`，没有模型凭据，所以那条消息对应的一轮会以 `MISSING_CREDENTIAL` 失败——但系统提示与请求头在调用模型前就已落盘，既能拿到证据，也不消耗额度。复现：
+
+```powershell
+node scripts/verify-preset.mjs \
+  --profile-dir "C:\Users\<你>\.dsh\profiles\web" \
+  --home "C:\Users\<你>\.dsh"
+```
+
 ## 真机实测（2026-10-24，DSH 0.2.1-rc.2，Linux + Chromium）
 
 - 纯净分身：建 profile 约 0.2 秒，启动约 6 秒，无头检查约 8 秒。
@@ -80,4 +104,7 @@ GitHub Release 附件（不发 npm）。解压后：
 
 ```
 npm test        # 单元 + Host 接线 + 端到端（假 dsh + 真实 Chromium；找不到浏览器会跳过浏览器用例）
+
+# 真机回归：创造模式下工具是否真的注册了（需要本机已装 dsh 与 Edge/Chrome）
+npm run verify-preset -- --profile-dir "C:\Users\<你>\.dsh\profiles\web" --home "C:\Users\<你>\.dsh"
 ```

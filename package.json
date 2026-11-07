@@ -14,7 +14,8 @@
   "files": ["index.js", "lib", "cordis.patch.yml", "locale/*.json", "icon.svg", "README.md"],
   "license": "BSD-3-Clause",
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "verify-preset": "node scripts/verify-preset.mjs"
   },
   "dsh": {
     "bundle": { "patch": "./cordis.patch.yml" }
