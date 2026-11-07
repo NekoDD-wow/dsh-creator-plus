@@ -1,6 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseUrlLine, redactUrl, filterBundlesForClone, childEnv, judge, filterIgnored } from '../lib/clone.js'
+import { mkdtemp, mkdir, writeFile, symlink, readlink, rm } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { parseUrlLine, redactUrl, filterBundlesForClone, childEnv, judge, filterIgnored, parseActivationWarnings, copyTreeJunctions } from '../lib/clone.js'
 import { resolveDshCommand, browserCandidates, findBrowser } from '../lib/locate.js'
 
 test('parseUrlLine 识别 dsh web 行并去掉 ANSI', () => {
@@ -73,6 +77,47 @@ test('judge 判定', () => {
 
 test('filterIgnored', () => {
   assert.deepEqual(filterIgnored(['[log] favicon 404', '[pageerror] boom'], ['favicon']), ['[pageerror] boom'])
+})
+
+test('parseActivationWarnings 解析 did not activate 告警块', () => {
+  const err = 'boot...\n\x1b[33mdsh: warning: 1 entry did not activate\x1b[0m\nbroken-id (@t/broken): failed: Error: boom\n    at apply (index.js:1:1)\n\nnext log\n'
+  assert.deepEqual(parseActivationWarnings(err), ['dsh: warning: 1 entry did not activate\nbroken-id (@t/broken): failed: Error: boom\nat apply (index.js:1:1)'])
+  // 多个 entry、带 required 的启动失败也要认
+  const two = 'dsh: warning: 2 entries did not activate\na (@x/a): failed: boom\nb (@x/b): pending (waiting for service: zz)\n'
+  assert.equal(parseActivationWarnings(two).length, 1)
+  assert.match(parseActivationWarnings(two)[0], /2 entries/)
+  assert.match(parseActivationWarnings('dsh: startup failed: 1 required plugin did not activate\n  id (pkg)\n')[0], /required plugin/)
+  // 正常启动输出不应误报；重复扫描同一段不产生重复块
+  assert.deepEqual(parseActivationWarnings('dsh web: http://127.0.0.1:1/\n'), [])
+  assert.equal(parseActivationWarnings(err + err).length, 1)
+})
+
+test('copyTreeJunctions 重建目录链接、跳过过滤项、解引用文件', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'copy-tree-'))
+  try {
+    const src = join(root, 'src')
+    const dep = join(root, 'plugin-src')
+    const dst = join(root, 'dst')
+    await mkdir(join(src, 'node_modules'), { recursive: true })
+    await mkdir(dep, { recursive: true })
+    await writeFile(join(src, 'package.json'), '{}')
+    await writeFile(join(src, 'cordis.patch.yml.bak-20260101'), 'skip')
+    await writeFile(join(src, '.x.staging-1'), 'skip')
+    await writeFile(join(dep, 'index.js'), 'export default 1')
+    await symlink(dep, join(src, 'node_modules', 'linked-plugin'), 'junction')
+
+    const notes = []
+    const stats = await copyTreeJunctions(src, dst, { notes })
+    assert.equal(stats.junctions, 1)
+    assert.equal(stats.files, 1) // 只数了 package.json（过滤项不算）
+    assert.ok(existsSync(join(dst, 'node_modules', 'linked-plugin', 'index.js')))
+    assert.equal(existsSync(join(dst, 'cordis.patch.yml.bak-20260101')), false)
+    assert.equal(existsSync(join(dst, '.x.staging-1')), false)
+    assert.deepEqual(notes, [])
+    if (process.platform === 'win32') assert.ok((await readlink(join(dst, 'node_modules', 'linked-plugin'))).includes('plugin-src'))
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 test('defineTool 产出合法 JSON Schema：required 提到顶层、返回值去掉 undefined', async () => {

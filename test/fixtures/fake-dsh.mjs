@@ -27,6 +27,10 @@ if (!existsSync(profileDir(name))) { console.error(`no profile ${name}`); proces
 const installedPath = join(profileDir(name), 'installed.json')
 const behavior = existsSync(installedPath) ? JSON.parse(readFileSync(installedPath, 'utf8')).behavior : 'ok'
 if (behavior === 'host-crash') { console.error('TypeError: plugin apply failed: boom'); process.exit(1) }
+// 0.2.2 的漏判场景：可选 entry 没激活时只打 stderr 告警，页面照常提供。
+if (behavior === 'inactive-entry') {
+  process.stderr.write('dsh: warning: 1 entry did not activate\nbroken-entry (@t/broken): failed: Error: boom on purpose\n    at apply (index.js:1:1)\n')
+}
 const port = Number(args[args.indexOf('--port') + 1])
 const script = behavior === 'client-crash'
   ? `throw new Error('slot entry crashed: Cannot read properties of undefined')`

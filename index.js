@@ -69,6 +69,7 @@ function renderCheck(v) {
   lines.push(`${v.ok ? 'PASS' : 'FAIL'} · clone ${v.id} · mode ${v.mode} · ${Math.round((v.ms || 0) / 1000)}s · dsh via ${v.dshSource}`)
   if (v.error) lines.push(`Error: ${v.error}`)
   if (v.verdict?.reasons?.length) lines.push(`Reasons: ${v.verdict.reasons.join('; ')}`)
+  if (v.activationWarnings?.length) lines.push(`Activation warnings (did not activate):\n${v.activationWarnings.slice(0, 3).join('\n')}`)
   for (const s of v.steps || []) lines.push(`- ${s.ok ? 'ok' : 'FAILED'} ${s.name} (${s.ms}ms)${s.detail && !s.ok ? `: ${s.detail}` : ''}${s.stderr ? `\n  stderr: ${s.stderr.slice(-1500)}` : ''}`)
   if (v.page?.errors?.length) {
     lines.push('Page errors:')
@@ -153,6 +154,7 @@ export function apply(ctx, rawConfig) {
         dshSource: r.dshSource,
         error: r.error,
         verdict: r.verdict,
+        activationWarnings: r.activationWarnings,
         visualVerified: r.visualVerified,
         steps: r.steps,
         page: r.page ? { loaded: r.page.loaded, crashed: r.page.crashed, navError: r.page.navError, errors: r.page.errors, probe: r.page.probe } : undefined,
