@@ -77,6 +77,7 @@ function renderCheck(v) {
     if (v.page.errors.length > 20) lines.push(`  … ${v.page.errors.length - 20} more`)
   }
   if (v.page?.probe) lines.push(`Page: title=${JSON.stringify(v.page.probe.title)} textLength=${v.page.probe.textLength} rootChildren=${v.page.probe.rootChildren}`)
+  if (v.page?.dismissed?.length) lines.push(`Dismissed dialogs: ${v.page.dismissed.join(', ')}`)
   if (v.screenshot) lines.push(`Screenshot: ${v.screenshot} (view with read_image)`)
   if (v.visualVerified === false) lines.push('Visual check: NOT performed (no headless browser).')
   if (v.viewUrl) lines.push(`Clone kept alive until clone_close or ${v.expiresAt}. viewUrl (give to the user as a link): ${v.viewUrl}`)
@@ -224,7 +225,7 @@ export function apply(ctx, rawConfig) {
         activationWarnings: r.activationWarnings,
         visualVerified: r.visualVerified,
         steps: r.steps,
-        page: r.page ? { loaded: r.page.loaded, crashed: r.page.crashed, navError: r.page.navError, errors: r.page.errors, probe: r.page.probe } : undefined,
+        page: r.page ? { loaded: r.page.loaded, crashed: r.page.crashed, navError: r.page.navError, errors: r.page.errors, probe: r.page.probe, dismissed: r.page.dismissed } : undefined,
         screenshot: r.page?.screenshot || undefined,
         http: r.http,
         notes: r.notes,

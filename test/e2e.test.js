@@ -39,6 +39,13 @@ test('正常插件：PASS，截图生成，临时目录清理', { skip: !browser
   assert.deepEqual(left, [])
 })
 
+test('首页「预览版说明」弹窗自动点掉', { skip: !browser }, async () => {
+  const { r } = await run('welcome-notice', { expectText: 'clone ok' })
+  assert.equal(r.ok, true, JSON.stringify(r, null, 2))
+  assert.deepEqual(r.page.dismissed, ['继续'])
+  assert.ok(r.notes.some(n => n.includes('自动点掉')), r.notes.join('\n'))
+})
+
 test('可选 entry 未激活：页面正常也必须 FAIL，并带回 did not activate 告警', async () => {
   // 对应 0.2.2 的漏判：apply() 抛错时只打 stderr 告警，`dsh web:` 照常打印、页面 200。
   const { r, left } = await run('inactive-entry', { browser: undefined })

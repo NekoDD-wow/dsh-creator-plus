@@ -34,11 +34,16 @@ if (behavior === 'inactive-entry') {
 const port = Number(args[args.indexOf('--port') + 1])
 const script = behavior === 'client-crash'
   ? `throw new Error('slot entry crashed: Cannot read properties of undefined')`
-  : behavior === 'blank' ? `` : `document.getElementById('root').innerHTML = '<h1>DeepSeek Harness</h1><p>clone ok</p>'`
+  : behavior === 'blank' ? ''
+    : behavior === 'welcome-notice'
+      ? `document.getElementById('root').innerHTML = '<h1>DeepSeek Harness</h1><p>clone ok</p>' +
+         '<div role="dialog" aria-modal="true" id="notice"><h2>预览版说明</h2><p>预览版说明正文</p><button id="notice-continue">继续</button></div>'
+         document.getElementById('notice-continue').onclick = () => { document.getElementById('notice').remove() }`
+      : `document.getElementById('root').innerHTML = '<h1>DeepSeek Harness</h1><p>clone ok</p>'`
 createServer((req, res) => {
-  if (req.url.startsWith('/app.js')) { res.writeHead(200, { 'content-type': 'text/javascript' }); res.end(script); return }
-  res.writeHead(200, { 'content-type': 'text/html' })
-  res.end(`<!doctype html><title>DSH</title><div id="root"></div><script src="/app.js"></script>`)
+  if (req.url.startsWith('/app.js')) { res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' }); res.end(script); return }
+  res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+  res.end(`<!doctype html><meta charset="utf-8"><title>DSH</title><div id="root"></div><script src="/app.js"></script>`)
 }).listen(port, '127.0.0.1', () => {
   console.log(`dsh web: http://127.0.0.1:${port}/?token=secret123`)
 })

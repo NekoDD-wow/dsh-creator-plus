@@ -1,6 +1,6 @@
 # 创造模式增强 · Creator Mode Plus
 
-**v0.1.5** · DSH Host 插件 · 包名 `@dsh-external/dsh-creator-plus`
+**v0.1.6** · DSH Host 插件 · 包名 `@dsh-external/dsh-creator-plus`
 
 创造模式经常安装、修改、调试插件，一不小心就把本体客户端弄崩。本插件给创造模式加一个「分身」：
 在临时的纯净 `DSH_HOME` 里启动一个 DSH，把待测插件装进去，用无头浏览器打开它的前端，确认能正常启动，**再**装进本体。
@@ -9,6 +9,7 @@
 
 - **`clone_check` 工具**：临时 DSH_HOME → 建 profile（纯净 / 复制）→ `dsh plugin add` 待测包 → `--no-open --port <空闲端口>` 启动 → 等 `dsh web:` 就绪行 → 无头 Edge/Chrome/Chromium 打开 → 收集 pageerror、console.error、资源报错，检查非白屏、可选期望文字/元素 → 截图 → 清理。
 - **`clone_close` 工具**：关掉 `keepAlive` 保留的分身。
+- **自动点掉首启弹窗**：clone 首次打开时的「预览版说明」和未登录的「开始使用」引导会被自动关闭，截图/检查结果更干净（命中记录写进 `page.dismissed`）。
 - **创造模式提醒**：只给 `cordis`（创造模式）预设的会话注入一段短提醒：装进本体前先跑 `clone_check`，并显式说明这是官方 verification 指引中「不要另起浏览器 / 改 HOME」的唯一例外。其他预设看不到工具也不付提示词成本。
 - **斜杠指令**：`/clone-check <dir> [clean|copy] [keep]` 与 `/clone-close`，在输入框直接执行，不产生模型消息、不进上下文（token 0）；同样只给目标预设的会话。
 
