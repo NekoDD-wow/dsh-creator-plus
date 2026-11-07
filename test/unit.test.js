@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile, symlink, readlink, rm } from 'node:fs/promis
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { parseUrlLine, redactUrl, filterBundlesForClone, childEnv, judge, filterIgnored, parseActivationWarnings, copyTreeJunctions, assertSafePackageDir } from '../lib/clone.js'
+import { parseUrlLine, redactUrl, filterBundlesForClone, childEnv, judge, filterIgnored, parseActivationWarnings, copyTreeJunctions, assertSafePackageDir, resolveCloneSource } from '../lib/clone.js'
 import { resolveDshCommand, browserCandidates, findBrowser } from '../lib/locate.js'
 
 test('parseUrlLine 识别 dsh web 行并去掉 ANSI', () => {
@@ -137,6 +137,20 @@ test('assertSafePackageDir：拒绝 shell 元字符，正常路径放行', () =>
     assert.throws(() => assertSafePackageDir(bad), /不安全|参数不合法/, bad)
   }
   assert.throws(() => assertSafePackageDir(''), /非空/)
+})
+
+test('resolveCloneSource：profileContext 优先，env 兜底', () => {
+  const pc = { name: 'web', dir: 'C:/dsh/profiles/web', home: 'C:/dsh' }
+  assert.deepEqual(resolveCloneSource({ profileContext: pc, env: {}, home: '/home/u' }), { sourceProfileDir: 'C:/dsh/profiles/web', sourceHome: 'C:/dsh' })
+  assert.deepEqual(resolveCloneSource({
+    profileContext: undefined,
+    env: { DSH_PROFILE_DIR: 'C:/env/profiles/desktop', DSH_HOME: 'C:/envhome' },
+    home: '/home/u',
+  }), { sourceProfileDir: 'C:/env/profiles/desktop', sourceHome: 'C:/envhome' })
+  // profileContext 只有 dir 时，home 用默认值
+  assert.deepEqual(resolveCloneSource({ profileContext: { dir: 'C:/pc/web' }, env: { DSH_PROFILE_DIR: 'C:/env' }, home: '/home/u' }), { sourceProfileDir: 'C:/pc/web', sourceHome: join('/home/u', '.dsh') })
+  // 两样都没有：dir 为空（copy 模式会给出明确错误）
+  assert.deepEqual(resolveCloneSource({ env: {}, home: '/home/u' }), { sourceProfileDir: undefined, sourceHome: join('/home/u', '.dsh') })
 })
 
 test('defineTool 产出合法 JSON Schema：required 提到顶层、返回值去掉 undefined', async () => {

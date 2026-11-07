@@ -1,9 +1,9 @@
 // 创造模式增强（Creator Mode Plus）· Host 插件
 // 只给使用指定预设（默认 cordis）的 agent 注册 clone_check / clone_close 和一段提醒；其他预设零成本。
-import { homedir, tmpdir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { resolveDshCommand, findBrowser } from './lib/locate.js'
-import { runClone, redactUrl } from './lib/clone.js'
+import { runClone, redactUrl, resolveCloneSource } from './lib/clone.js'
 import { REMINDER, CHECK_DESCRIPTION, CLOSE_DESCRIPTION } from './lib/prompt.js'
 
 export const name = 'dsh-creator-plus'
@@ -155,6 +155,11 @@ export function apply(ctx, rawConfig) {
     if (mode !== 'clean' && mode !== 'copy') throw new Error('mode 只能是 "clean" 或 "copy"')
     const dsh = resolveDshCommand({ override: config.dshCommand })
     const browser = findBrowser({ override: config.browserPath })
+    // copy 模式：宿主进程可能没有 DSH_PROFILE_DIR（那是 shell-env 只传给工具 shell 的），
+    // 用 profileContext 服务拿当前 profile 的 dir/home，env 只作兜底。
+    let profileContext
+    try { profileContext = ctx.get?.('profileContext') } catch { profileContext = undefined }
+    const { sourceProfileDir, sourceHome } = resolveCloneSource({ profileContext, env: process.env })
     const r = await runClone({
       dsh,
       browser,
@@ -169,8 +174,8 @@ export function apply(ctx, rawConfig) {
       settleMs: config.settleSeconds * 1000,
       ignoreErrors: config.ignoreErrors,
       artifactsDir,
-      sourceProfileDir: process.env.DSH_PROFILE_DIR,
-      sourceHome: process.env.DSH_HOME || join(homedir(), '.dsh'),
+      sourceProfileDir,
+      sourceHome,
       signal: exec?.signal,
     })
     let expiresAt

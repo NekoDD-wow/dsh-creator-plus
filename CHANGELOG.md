@@ -2,6 +2,19 @@
 
 本项目遵循语义化版本；记录到每次 GitHub Release 的变更。
 
+## 未发布
+
+### 修复
+
+- **copy 模式在真实宿主进程里拿不到当前 profile**：`DSH_PROFILE_DIR` 只由
+  `shell-env` 注入给工具 shell，宿主进程（例如用 `dsh web` 启动）的
+  `process.env` 里没有它，导致 `clone_check { mode: "copy" }` 在「复制当前 profile」
+  一步就以「复制模式需要当前 profile 目录」失败。现在优先从 `profileContext`
+  服务取 `dir` / `home`（`shell-env` 也是从这里取的），`DSH_PROFILE_DIR` /
+  `DSH_HOME` 只作兜底；两者都拿不到时错误信息会写明。
+  真机验证：标准 web profile 的 copy 模式 PASS（2476 文件 / 252 目录 / 3 junction，
+  复制 2.7s，整次 13s）。
+
 ## v0.1.2（2026-11-07）
 
 ### 修复
